@@ -1,0 +1,33 @@
+[project]
+name  = "database-mcp"
+version="0.1.0"
+
+description = "Database MCP"
+
+authors = [{"name"  = "Mai Thành Duy An", "email"="tiachop0102@gmail.com"}]
+
+requires-python= ">=3.12"
+
+dependencies = [
+    "requests",
+    "fastapi",
+    "uvicorn",
+    "PyJWT",
+    "python-multipart>=0.0.20",
+    "sqlalchemy>=2.0.41",
+    "alembic>=1.16.4",
+    "psycopg2>=2.9.10",
+    "pytest>=8.4.1",
+    "pymysql>=1.1.0",
+    "cryptography>=42.0.5",
+]
+
+[project.scripts]
+database-mcp="app.main:main"
+
+[tool.setuptools]
+packages = ["app"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
