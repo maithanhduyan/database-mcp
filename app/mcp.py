@@ -109,6 +109,7 @@ async def handle_tools_list(params: Optional[Union[dict, list]] = None) -> Dict[
 )
 async def tool_echo(arguments: dict) -> dict:
     message = arguments.get("message", "")
+    logger.info(f"{message}")
     return {
         "content": [
             {

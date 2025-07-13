@@ -6,11 +6,13 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import asyncio
-from app.logger import get_logger
+from app.logger import get_logger, setup_unified_logging, UNIFIED_LOGGING_CONFIG
 from app.db import get_db,init_db
 from app.api import router as api_router
 from app.mcp import router as mcp_router
 
+# Setup unified logging before creating logger
+setup_unified_logging()
 logger = get_logger(__name__)
 
 @asynccontextmanager
@@ -50,12 +52,18 @@ app.include_router(
 
 def main() -> None:
     """
-    Hàm main kiểm tra kết nối và truy vấn dữ liệu mẫu.
+    Hàm main khởi động server với cấu hình logging thống nhất.
     """
-
     import uvicorn
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Sử dụng unified logging config cho uvicorn
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        log_config=UNIFIED_LOGGING_CONFIG,  # Sử dụng unified config
+        access_log=True  # Bật access log
+    )
 
 if __name__ == "__main__":
     main()
