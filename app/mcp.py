@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 # File: app/mcp.py
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Callable, Dict, Any, Optional, Union
-from datetime import datetime, timezone
 import json
 from app.json_rpc import JsonRpcRequest, JsonRpcResponse, JsonRpcErrorResponse, create_success_response, create_error_response
 from app.logger import get_logger
-from app.db import execute_query
+from app.db import execute_query, execute_command, execute_transaction, get_table_info, get_database_info
+from app.auth import verify_mcp_api_key
 
 
 logger = get_logger(__name__)
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_mcp_api_key)])  # Ensure all routes require API key verification
 
 
 from typing import TypedDict
@@ -118,6 +118,228 @@ async def tool_echo(arguments: dict) -> dict:
             }
         ]
     }
+
+@register_tool(
+    "execute_command",
+    description="Execute SQL commands (INSERT, UPDATE, DELETE, CREATE, ALTER, etc.). Supports write operations.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "SQL command to execute (INSERT, UPDATE, DELETE, CREATE, ALTER, etc.)"
+            },
+            "params": {
+                "type": "object",
+                "description": "Query parameters (optional)",
+                "default": {}
+            }
+        },
+        "required": ["query"]
+    }
+)
+async def tool_execute_command(arguments: dict) -> dict:
+    query = arguments.get("query", "")
+    params = arguments.get("params", {})
+    
+    if not query.strip():
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Error: Query cannot be empty"
+                }
+            ]
+        }
+    
+    # Không cho phép SELECT với tool này (dùng execute_query thay thế)
+    if query.strip().upper().startswith("SELECT"):
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Error: Use 'execute_query' tool for SELECT statements"
+                }
+            ]
+        }
+    
+    try:
+        result = execute_command(query, params)
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": result["message"]
+                },
+                {
+                    "type": "text", 
+                    "text": json.dumps(result, indent=2, ensure_ascii=False)
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Error executing command: {str(e)}"
+                }
+            ]
+        }
+
+@register_tool(
+    "execute_transaction",
+    description="Execute multiple SQL commands in a single transaction. All commands succeed or all fail.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "queries": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "SQL command"
+                        },
+                        "params": {
+                            "type": "object",
+                            "description": "Parameters for this query"
+                        }
+                    },
+                    "required": ["query"]
+                },
+                "description": "List of SQL commands to execute in transaction"
+            }
+        },
+        "required": ["queries"]
+    }
+)
+async def tool_execute_transaction(arguments: dict) -> dict:
+    queries = arguments.get("queries", [])
+    
+    if not queries:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Error: No queries provided"
+                }
+            ]
+        }
+    
+    try:
+        result = execute_transaction(queries)
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": result["message"]
+                },
+                {
+                    "type": "text",
+                    "text": json.dumps(result, indent=2, ensure_ascii=False)
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Error executing transaction: {str(e)}"
+                }
+            ]
+        }
+
+@register_tool(
+    "get_table_info",
+    description="Get information about database tables. If table_name is provided, get detailed column info.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "table_name": {
+                "type": "string",
+                "description": "Name of specific table to inspect (optional)"
+            }
+        }
+    }
+)
+async def tool_get_table_info(arguments: dict) -> dict:
+    table_name = arguments.get("table_name")
+    
+    try:
+        result = get_table_info(table_name)
+        
+        if "error" in result:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": result["error"]
+                    }
+                ]
+            }
+        
+        if table_name:
+            message = f"Table '{table_name}' information retrieved successfully."
+        else:
+            message = f"Found {result.get('table_count', 0)} tables in database."
+        
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": message
+                },
+                {
+                    "type": "text",
+                    "text": json.dumps(result, indent=2, ensure_ascii=False, default=str)
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Error getting table info: {str(e)}"
+                }
+            ]
+        }
+
+@register_tool(
+    "get_database_info",
+    description="Get general information about the current database (type, version, tables, etc.).",
+    input_schema={
+        "type": "object",
+        "properties": {}
+    }
+)
+async def tool_get_database_info(arguments: dict) -> dict:
+    try:
+        result = get_database_info()
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Database information retrieved successfully."
+                },
+                {
+                    "type": "text",
+                    "text": json.dumps(result, indent=2, ensure_ascii=False)
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Error getting database info: {str(e)}"
+                }
+            ]
+        }
 
 @register_tool(
     "execute_query",
